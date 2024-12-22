@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Client</title>
+</head>
+<body>
+
+    <h1>WebSocket Chat</h1>
+
+	<label for="username">Username: </label><input type="text" id="username" placeholder="Enter Username"><br><br>
+	<label for="message">Message: </label><input type="text" id="message" placeholder="Enter Message"><br><br>
+
+	<button onclick="connect()">Connect</button>
+    <button onclick="sendMessage()">Send Message</button>
+
+    <div id="output"></div>
+
+    <script>
+		var socket;
+		var displayedMessages = [];
+		var currentUsername = "";
+
+		function connect() { 
+			var username = document.getElementById('username').value;
+
+			if (username !== currentUsername) {
+				output(`Username changed to: ${username}`);
+				currentUsername = username;
+			}
+
+			socket = new WebSocket("ws://localhost:8080/ws");
+
+			socket.onopen = function(e) {
+				socket.send(username);
+			};
+
+			socket.onmessage = function(event) {
+				var message = event.data;
+				if (!displayedMessages.includes(message)) {
+					displayedMessages.push(message);
+					output(message);
+				}
+			};
+
+			socket.onclose = function(event) {
+				if (event.wasClean) {
+					output(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+				} else {
+					output('Connection died');
+				}
+			};
+
+			socket.onerror = function(error) {
+				output(`Error: ${error}`);
+			};
+		}
+
+        function sendMessage() { 
+			var msg = document.getElementById('message').value;
+
+            if (msg === "") return;
+
+            socket.send(msg);
+			document.getElementById('message').value = "";
+        }
+
+		function output(message) {
+            var outputDiv = document.getElementById("output");
+            var p = document.createElement("p");
+            p.innerText = message;
+            outputDiv.appendChild(p);
+        }
+    </script>
+</body>
+</html>
