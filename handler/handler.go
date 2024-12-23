@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"websocket-trial/models"
 
 	"github.com/gofiber/websocket/v2"
+	"gorm.io/gorm"
 )
+
+type Handler struct {
+	DB *gorm.DB
+}
 
 type Client struct {
 	Conn     *websocket.Conn
@@ -23,8 +29,7 @@ func generateDefaultUsername() string {
 }
 
 func addClient(conn *websocket.Conn, username string) *Client {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+
 	for existingConn, client := range clients {
 		if client.Conn == conn {
 			delete(clients, existingConn)
@@ -37,8 +42,7 @@ func addClient(conn *websocket.Conn, username string) *Client {
 }
 
 func removeClient(conn *websocket.Conn) {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+
 	for existingConn, client := range clients {
 		if client.Conn == conn {
 			delete(clients, existingConn)
@@ -61,9 +65,9 @@ func broadcastMessage(message string, sender *websocket.Conn) {
 	}
 }
 
-func EchoServer(ws *websocket.Conn) {
+func (H *Handler) EchoServer(ws *websocket.Conn) {
 	defer ws.Close()
-
+	var message models.Chat
 	var username string
 	_, payload, err := ws.ReadMessage()
 	if err != nil {
@@ -85,7 +89,14 @@ func EchoServer(ws *websocket.Conn) {
 			log.Println("Error reading message:", err)
 			break
 		}
+		message.Content = string(msg)
 
+		result := H.DB.Create(&message)
+
+		if result.Error != nil {
+			log.Println("Error inserting data to database: ", result.Error)
+			continue
+		}
 		clientsMu.RLock()
 		senderUsername := client.Username
 		clientsMu.RUnlock()
@@ -97,7 +108,7 @@ func EchoServer(ws *websocket.Conn) {
 		if err == nil {
 			newUsername := string(payload)
 			if newUsername != senderUsername {
-				clientsMu.Lock()
+
 				client.Username = newUsername
 				clientsMu.Unlock()
 			}
