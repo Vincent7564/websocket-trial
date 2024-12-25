@@ -23,11 +23,6 @@
 		function connect() { 
 			var username = document.getElementById('username').value;
 
-			if (username !== currentUsername) {
-				output(`Username changed to: ${username}`);
-				currentUsername = username;
-			}
-
 			socket = new WebSocket("ws://localhost:8080/ws");
 			
 			socket.onopen = function(e) {
@@ -36,8 +31,12 @@
 
 			socket.onmessage = function(event) {
 				var message = event.data;
-				if (!displayedMessages.includes(message)) {
-					displayedMessages.push(message);
+				if (message === "User not found") {
+					output("User not found");
+				} else if (message === "Username successfully changed") {
+					output(`Username changed to: ${username}`);
+					currentUsername = username;
+				} else {
 					output(message);
 				}
 			};
@@ -46,7 +45,7 @@
 				if (event.wasClean) {
 					output(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
 				} else {
-					output('Connection died');
+					output('Connection died, Please reconnect with registered username');
 				}
 			};
 

@@ -68,6 +68,7 @@ func broadcastMessage(message string, sender *websocket.Conn) {
 func (H *Handler) EchoServer(ws *websocket.Conn) {
 	defer ws.Close()
 	var message models.Chat
+	var user models.User
 	var username string
 	_, payload, err := ws.ReadMessage()
 	if err != nil {
@@ -80,7 +81,14 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 		}
 	}
 
+	if result := H.DB.Where("username = ?", username).First(&user); result.Error != nil {
+		log.Println("User Not Found", result.Error)
+		ws.WriteMessage(websocket.TextMessage, []byte("User not found"))
+		return
+	}
 	client := addClient(ws, username)
+	ws.WriteMessage(websocket.TextMessage, []byte("Username successfully changed"))
+
 	defer removeClient(ws)
 
 	for {
@@ -89,7 +97,9 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 			log.Println("Error reading message:", err)
 			break
 		}
+
 		message.Content = string(msg)
+		message.Username = string(username)
 
 		result := H.DB.Create(&message)
 
@@ -97,9 +107,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 			log.Println("Error inserting data to database: ", result.Error)
 			continue
 		}
-		clientsMu.RLock()
 		senderUsername := client.Username
-		clientsMu.RUnlock()
 
 		fmt.Printf("Message Received from '%s': %s\n", senderUsername, string(msg))
 		broadcastMessage(string(msg), ws)
@@ -108,9 +116,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 		if err == nil {
 			newUsername := string(payload)
 			if newUsername != senderUsername {
-
 				client.Username = newUsername
-				clientsMu.Unlock()
 			}
 		}
 	}
