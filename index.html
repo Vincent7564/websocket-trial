@@ -7,65 +7,100 @@
 
     <h1>WebSocket Chat</h1>
 
-	<label for="username">Username: </label><input type="text" id="username" placeholder="Enter Username"><br><br>
-	<label for="message">Message: </label><input type="text" id="message" placeholder="Enter Message"><br><br>
+    <label for="username">Username: </label><input type="text" id="username" placeholder="Enter Username"><br><br>
+    <label for="message">Message: </label><input type="text" id="message" placeholder="Enter Message"><br><br>
 
-	<button onclick="connect()">Connect</button>
+    <button onclick="connect()">Connect</button>
     <button onclick="sendMessage()">Send Message</button>
+    <button onclick="changeUsername()">Change Username</button>
 
     <div id="output"></div>
 
     <script>
-		var socket;
-		var displayedMessages = [];
-		var currentUsername = "";
+        let socket;
+        let currentUsername = "";
 
-		function connect() { 
-			var username = document.getElementById('username').value;
+        function connect() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                output("Username cannot be empty.");
+                return;
+            }
 
-			socket = new WebSocket("ws://localhost:8080/ws");
-			
-			socket.onopen = function(e) {
-				socket.send(username);
-			};
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
 
-			socket.onmessage = function(event) {
-				var message = event.data;
-				if (message === "User not found") {
-					output("User not found");
-				} else if (message === "Username successfully changed") {
-					output(`Username changed to: ${username}`);
-					currentUsername = username;
-				} else {
-					output(message);
-				}
-			};
+            socket = new WebSocket("ws://localhost:8080/ws");
 
-			socket.onclose = function(event) {
-				if (event.wasClean) {
-					output(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
-				} else {
-					output('Connection died, Please reconnect with registered username');
-				}
-			};
+            socket.onopen = () => {
+                const initMessage = JSON.stringify({ type: "username_change", username: username });
+                socket.send(initMessage);
+            };
 
-			socket.onerror = function(error) {
-				output(`Error: ${error}`);
-			};
-		}
+            socket.onmessage = (event) => {
+                const message = event.data;
 
-        function sendMessage() { 
-			var msg = document.getElementById('message').value;
+                try {
+                    const parsedMessage = JSON.parse(message);
+                    if (parsedMessage.type === "chat") {
 
-            if (msg === "") return;
+                        output(`${parsedMessage.username}: ${parsedMessage.content}`);
+                    } else if (parsedMessage.type === "status") {
 
-            socket.send(msg);
-			document.getElementById('message').value = "";
+                        output(parsedMessage.message);
+                        if (parsedMessage.new_username) {
+                            currentUsername = parsedMessage.new_username;
+                        }
+                    } else {
+                        output(`Unknown message type: ${parsedMessage.type}`);
+                    }
+                } catch (error) {
+                    output(message); 
+                }
+            };
+
+            socket.onclose = (event) => {
+                if (event.wasClean) {
+                    output(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                } else {
+                    output('Connection died, Please reconnect with a valid username');
+                }
+            };
+
+            socket.onerror = (error) => {
+                output(`Error: ${error}`);
+            };
         }
 
-		function output(message) {
-            var outputDiv = document.getElementById("output");
-            var p = document.createElement("p");
+        function sendMessage() {
+            const content = document.getElementById('message').value.trim();
+            if (!content) return;
+
+            const message = JSON.stringify({ type: "chat", content });
+            socket.send(message);
+            document.getElementById('message').value = "";
+        }
+
+        function changeUsername() {
+            const newUsername = document.getElementById('username').value.trim();
+            if (!newUsername) {
+                output("Username cannot be empty.");
+                return;
+            }
+
+            if (newUsername === currentUsername) {
+                output("Username is the same as the current one.");
+                return;
+            }
+
+            const message = JSON.stringify({ type: "username_change", username: newUsername });
+            socket.send(message);
+        }
+
+        function output(message) {
+            const outputDiv = document.getElementById("output");
+            const p = document.createElement("p");
             p.innerText = message;
             outputDiv.appendChild(p);
         }

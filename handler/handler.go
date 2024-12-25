@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -70,25 +71,33 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 	var message models.Chat
 	var user models.User
 	var username string
+
 	_, payload, err := ws.ReadMessage()
-	if err != nil {
-		log.Println("Error receiving username:", err)
+	if err != nil || len(payload) == 0 {
+		log.Println("Error receiving username or empty payload:", err)
 		username = generateDefaultUsername()
 	} else {
-		username = string(payload)
-		if username == "" {
+		var receivedData map[string]string
+		err = json.Unmarshal(payload, &receivedData)
+		if err != nil {
+			log.Println("Error parsing incoming message:", err)
 			username = generateDefaultUsername()
+		} else {
+			username = receivedData["username"]
+			if username == "" {
+				username = generateDefaultUsername()
+			}
 		}
 	}
 
 	if result := H.DB.Where("username = ?", username).First(&user); result.Error != nil {
-		log.Println("User Not Found", result.Error)
+		log.Println("User not found:", result.Error)
 		ws.WriteMessage(websocket.TextMessage, []byte("User not found"))
 		return
 	}
-	client := addClient(ws, username)
-	ws.WriteMessage(websocket.TextMessage, []byte("Username successfully changed"))
 
+	client := addClient(ws, username)
+	ws.WriteMessage(websocket.TextMessage, []byte("Username successfully set"))
 	defer removeClient(ws)
 
 	for {
@@ -98,26 +107,58 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 			break
 		}
 
-		message.Content = string(msg)
-		message.Username = string(username)
-
-		result := H.DB.Create(&message)
-
-		if result.Error != nil {
-			log.Println("Error inserting data to database: ", result.Error)
+		var receivedData map[string]string
+		if err := json.Unmarshal(msg, &receivedData); err != nil {
+			log.Println("Invalid message format:", err)
+			ws.WriteMessage(websocket.TextMessage, []byte("Invalid message format"))
 			continue
 		}
-		senderUsername := client.Username
 
-		fmt.Printf("Message Received from '%s': %s\n", senderUsername, string(msg))
-		broadcastMessage(string(msg), ws)
+		messageType, exists := receivedData["type"]
+		if !exists {
+			ws.WriteMessage(websocket.TextMessage, []byte("Message type not specified"))
+			continue
+		}
 
-		_, payload, err := ws.ReadMessage()
-		if err == nil {
-			newUsername := string(payload)
-			if newUsername != senderUsername {
-				client.Username = newUsername
+		switch messageType {
+		case "chat":
+
+			content, exists := receivedData["content"]
+			if !exists || content == "" {
+				ws.WriteMessage(websocket.TextMessage, []byte("Message content cannot be empty"))
+				continue
 			}
+
+			message.Content = content
+			message.Username = client.Username
+			if result := H.DB.Create(&message); result.Error != nil {
+				log.Println("Error inserting data into database:", result.Error)
+				continue
+			}
+
+			fmt.Printf("Message received from '%s': %s\n", client.Username, content)
+			broadcastMessage(content, ws)
+
+		case "username_change":
+
+			newUsername, exists := receivedData["username"]
+			if !exists || newUsername == "" || newUsername == client.Username {
+				ws.WriteMessage(websocket.TextMessage, []byte("Invalid or unchanged username"))
+				continue
+			}
+
+			if result := H.DB.Where("username = ?", newUsername).First(&user); result.Error != nil {
+				log.Println("User not found:", result.Error)
+				ws.WriteMessage(websocket.TextMessage, []byte("User not found"))
+				continue
+			}
+
+			client.Username = newUsername
+			ws.WriteMessage(websocket.TextMessage, []byte("Username successfully changed"))
+
+		default:
+			ws.WriteMessage(websocket.TextMessage, []byte("Unknown message type"))
+			log.Println("Unknown message type:", messageType)
 		}
 	}
 }
