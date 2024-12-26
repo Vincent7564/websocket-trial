@@ -1,108 +1,39 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebSocket Client</title>
+    <title>Login Page</title>
 </head>
 <body>
-
-    <h1>WebSocket Chat</h1>
-
+    <h1>Login</h1>
     <label for="username">Username: </label><input type="text" id="username" placeholder="Enter Username"><br><br>
-    <label for="message">Message: </label><input type="text" id="message" placeholder="Enter Message"><br><br>
-
+    <label for="password">Password: </label><input type="password" id="password" placeholder="Enter Password"><br><br>
     <button onclick="connect()">Connect</button>
-    <button onclick="sendMessage()">Send Message</button>
-    <button onclick="changeUsername()">Change Username</button>
-
-    <div id="output"></div>
 
     <script>
-        let socket;
-        let currentUsername = "";
-
-        function connect() {
+        async function connect() {
             const username = document.getElementById('username').value.trim();
-            if (!username) {
-                output("Username cannot be empty.");
+            const password = document.getElementById('password').value.trim();
+            if (!username || !password) {
+                alert("Username and password cannot be empty.");
                 return;
             }
 
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close();
+            const response = await fetch('http://localhost:8080/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username: username, password: password })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log(data)
+                localStorage.setItem('authToken', data.data.token);
+                window.location.href = `chat.html?username=${username}`;
+            } else {
+                alert('Login failed. Please check your credentials.');
             }
-
-            socket = new WebSocket("ws://localhost:8080/ws");
-
-            socket.onopen = () => {
-                const initMessage = JSON.stringify({ type: "username_change", username: username });
-                socket.send(initMessage);
-            };
-
-            socket.onmessage = (event) => {
-                const message = event.data;
-
-                try {
-                    const parsedMessage = JSON.parse(message);
-                    if (parsedMessage.type === "chat") {
-
-                        output(`${parsedMessage.username}: ${parsedMessage.content}`);
-                    } else if (parsedMessage.type === "status") {
-
-                        output(parsedMessage.message);
-                        if (parsedMessage.new_username) {
-                            currentUsername = parsedMessage.new_username;
-                        }
-                    } else {
-                        output(`Unknown message type: ${parsedMessage.type}`);
-                    }
-                } catch (error) {
-                    output(message); 
-                }
-            };
-
-            socket.onclose = (event) => {
-                if (event.wasClean) {
-                    output(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
-                } else {
-                    output('Connection died, Please reconnect with a valid username');
-                }
-            };
-
-            socket.onerror = (error) => {
-                output(`Error: ${error}`);
-            };
-        }
-
-        function sendMessage() {
-            const content = document.getElementById('message').value.trim();
-            if (!content) return;
-
-            const message = JSON.stringify({ type: "chat", content });
-            socket.send(message);
-            document.getElementById('message').value = "";
-        }
-
-        function changeUsername() {
-            const newUsername = document.getElementById('username').value.trim();
-            if (!newUsername) {
-                output("Username cannot be empty.");
-                return;
-            }
-
-            if (newUsername === currentUsername) {
-                output("Username is the same as the current one.");
-                return;
-            }
-
-            const message = JSON.stringify({ type: "username_change", username: newUsername });
-            socket.send(message);
-        }
-
-        function output(message) {
-            const outputDiv = document.getElementById("output");
-            const p = document.createElement("p");
-            p.innerText = message;
-            outputDiv.appendChild(p);
         }
     </script>
 </body>

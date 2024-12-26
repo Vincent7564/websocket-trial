@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Page</title>
+    <style>
+        .warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .message {
+            padding: 5px;
+            margin: 5px 0;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Chat</h1>
+
+    <label for="message">Message: </label><input type="text" id="message" placeholder="Enter Message"><br><br>
+
+    <button onclick="sendMessage()">Send Message</button>
+    <button onclick="changeUsername()">Change Username</button>
+
+    <div id="output"></div>
+
+    <script>
+        let socket;
+        let currentUsername = "";
+        const authToken = localStorage.getItem('authToken');
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+
+        if (!authToken) {
+
+            window.location.href = 'index.html';
+        } else {
+            connect(username);
+        }
+
+        function connect(username) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+
+            socket = new WebSocket("ws://localhost:8080/ws");
+
+            socket.onopen = () => {
+
+                socket.send(JSON.stringify({ type: "auth", token: authToken, username: username }));
+                currentUsername = username;
+            };
+
+            socket.onmessage = (event) => {
+                const message = event.data;
+                console.log("Received message:", message);
+
+                if (message.startsWith("Warning:")) {
+                    console.log("Received warning message");
+                    outputWarning(message);
+                } else if (message === "Account already active in another session") {
+                    console.log("Received duplicate session message");
+                    outputError(message);
+                    socket.close();
+                    alert("This account is already logged in elsewhere!");
+                    window.location.href = 'index.html';
+                } else {
+                    outputMessage(message);
+                }
+            };
+
+            socket.onclose = (event) => {
+                console.log("WebSocket closed:", event);
+                if (event.wasClean) {
+                    outputMessage(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                } else {
+                    outputError('Connection died, Please reconnect with a valid username');
+                }
+
+                socket = null;
+            };
+
+            socket.onerror = (error) => {
+                outputError(`Error: ${error}`);
+            };
+        }
+
+        function sendMessage() {
+            const content = document.getElementById('message').value.trim();
+            if (!content) return;
+
+            const message = JSON.stringify({ type: "chat", content });
+            socket.send(message);
+            document.getElementById('message').value = "";
+        }
+
+        function changeUsername() {
+            const newUsername = prompt("Enter new username:");
+            if (!newUsername || newUsername.trim() === "") {
+                outputError("Username cannot be empty.");
+                return;
+            }
+
+            if (newUsername === currentUsername) {
+                outputError("Username is the same as the current one.");
+                return;
+            }
+
+            const message = JSON.stringify({ type: "username_change", username: newUsername });
+            socket.send(message);
+        }
+
+        function outputMessage(message) {
+            console.log("Outputting message:", message);
+            const outputDiv = document.getElementById("output");
+            const p = document.createElement("p");
+            p.className = "message";
+            p.innerText = message;
+            outputDiv.appendChild(p);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function outputWarning(message) {
+            const outputDiv = document.getElementById("output");
+            const div = document.createElement("div");
+            div.className = "warning";
+            div.innerText = message;
+            outputDiv.appendChild(div);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function outputError(message) {
+            const outputDiv = document.getElementById("output");
+            const div = document.createElement("div");
+            div.className = "error";
+            div.innerText = message;
+            outputDiv.appendChild(div);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        document.getElementById('message').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
