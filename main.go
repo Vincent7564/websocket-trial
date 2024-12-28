@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
+	"time"
 	"websocket-trial/models"
 	"websocket-trial/routes"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -16,8 +19,10 @@ import (
 func main() {
 	fmt.Println("Go Websocket Server")
 	err := godotenv.Load()
+	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
+
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Error().Msg("Error loading .env file")
 	}
 	conn := "host=localhost user=postgres dbname=RTChat sslmode=disable"
 	db, err := gorm.Open(postgres.Open(conn), &gorm.Config{})
@@ -36,7 +41,7 @@ func main() {
 
 	for _, model := range models {
 		if err := db.AutoMigrate(model); err != nil {
-			log.Fatalf("Failed to migrate model: %v", err)
+			log.Error().Msg("Failed to migrate model:" + err.Error())
 		}
 	}
 
@@ -50,6 +55,6 @@ func main() {
 	routes.SetupRoutes(app, db)
 
 	if err := app.Listen(":8080"); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Error().Msg("Failed to start server: " + err.Error())
 	}
 }

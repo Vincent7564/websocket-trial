@@ -3,11 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"websocket-trial/models"
 
 	"github.com/gofiber/websocket/v2"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -38,27 +38,27 @@ func addClient(conn *websocket.Conn, username string) *Client {
 	clientsMu.Lock()
 	clients[conn] = client
 	clientsMu.Unlock()
-	log.Printf("New client connected. Username: %s, Total clients: %d", username, len(clients))
+	log.Info().Msg("New client connected. Username:" + username + "Total clients: " + string(len(clients)))
 	return client
 }
 
 func removeClient(conn *websocket.Conn) {
 	clientsMu.Lock()
 	if client, exists := clients[conn]; exists {
-		log.Printf("Client disconnected. Username: %s", client.Username)
+		log.Error().Msg("Client disconnected. Username: " + client.Username)
 
 		if client.Token != "" {
-			log.Printf("Removing token %s from active sessions", client.Token)
+			log.Error().Msg("Removing token" + client.Token + "from active sessions")
 			delete(activeTokens, client.Token)
 		}
 		if client.UserID != 0 {
-			log.Printf("Removing user ID %d from active sessions", client.UserID)
+			log.Error().Msg("Removing user ID " + string(client.UserID) + " from active sessions")
 			delete(activeUsers, client.UserID)
 		}
 		delete(clients, conn)
 	}
 	clientsMu.Unlock()
-	log.Printf("Active sessions - Tokens: %d, Users: %d", len(activeTokens), len(activeUsers))
+	log.Error().Msg("Active sessions - Tokens: " + string(len(activeTokens)) + ", Users: " + string(len(activeUsers)))
 }
 
 func broadcastMessage(message string, sender *websocket.Conn) {
@@ -67,7 +67,7 @@ func broadcastMessage(message string, sender *websocket.Conn) {
 
 	senderClient, exists := clients[sender]
 	if !exists {
-		log.Printf("Error: sender not found in clients map")
+		log.Error().Msg("Error: sender not found in clients map")
 		return
 	}
 
@@ -75,7 +75,7 @@ func broadcastMessage(message string, sender *websocket.Conn) {
 
 	for conn, client := range clients {
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(messageToSend)); err != nil {
-			log.Printf("Error broadcasting message to %s: %v", client.Username, err)
+			log.Error().Msg("Error broadcasting message to " + client.Username + ":" + err.Error())
 		}
 	}
 }
@@ -92,13 +92,13 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
-			log.Println("Error reading message:", err)
+			log.Error().Msg("Error reading message:" + err.Error())
 			break
 		}
 
 		var receivedData map[string]string
 		if err := json.Unmarshal(msg, &receivedData); err != nil {
-			log.Println("Invalid message format:", err)
+			log.Error().Msg("Invalid message format:" + err.Error())
 			continue
 		}
 
@@ -120,13 +120,13 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 
 			var userAccessToken models.UserAccessToken
 			if result := H.DB.Where("token = ?", token).First(&userAccessToken); result.Error != nil {
-				log.Println("Invalid token:", result.Error)
+				log.Error().Msg("Invalid token: " + result.Error.Error())
 				ws.WriteMessage(websocket.TextMessage, []byte("Invalid authentication token"))
 				continue
 			}
 
 			if result := H.DB.First(&user, userAccessToken.UserID); result.Error != nil {
-				log.Println("User not found:", result.Error)
+				log.Error().Msg("User not found:" + result.Error.Error())
 				ws.WriteMessage(websocket.TextMessage, []byte("User not found"))
 				continue
 			}
@@ -146,7 +146,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 				}
 
 				if err := activeConn.WriteMessage(websocket.TextMessage, []byte("Warning: Someone is trying to login to your account from another location")); err != nil {
-					log.Printf("Error sending warning to existing connection: %v", err)
+					log.Printf("Error sending warning to existing connection:" + err.Error())
 				}
 
 				clientsMu.Unlock()
@@ -182,7 +182,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 			message.Content = content
 			message.Username = initialClient.Username
 			if result := H.DB.Create(&message); result.Error != nil {
-				log.Println("Error inserting data into database:", result.Error)
+				log.Error().Msg("Error inserting data into database:" + result.Error.Error())
 				continue
 			}
 
@@ -196,7 +196,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 			}
 
 			if result := H.DB.Where("username = ?", newUsername).First(&user); result.Error != nil {
-				log.Println("User not found:", result.Error)
+				log.Error().Msg("User not found:" + result.Error.Error())
 				ws.WriteMessage(websocket.TextMessage, []byte("User not found"))
 				continue
 			}
@@ -209,7 +209,7 @@ func (H *Handler) EchoServer(ws *websocket.Conn) {
 
 		default:
 			ws.WriteMessage(websocket.TextMessage, []byte("Unknown message type"))
-			log.Println("Unknown message type:", messageType)
+			log.Error().Msg("Unknown message type:" + messageType)
 		}
 	}
 }

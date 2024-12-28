@@ -8,7 +8,7 @@ require (
 	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/joho/godotenv v1.5.1
-	github.com/rs/cors v1.11.1
+	github.com/rs/zerolog v1.33.0
 	golang.org/x/crypto v0.31.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/postgres v1.5.11
